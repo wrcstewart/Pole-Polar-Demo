@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+
+
+
+
+<html>
+
+<head>
+    <title>Pole and Polar</title>
+    <script src="js/three.min.js"></script>
+    <script src="js/dat.gui.min.js"></script>
+    <script src="libs/OrbitControls.js"></script>
+    <script src="libs/SVGRenderer.js"></script>
+    <script src="libs/Projector.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* slider controls */
+        #gui { position: absolute; top: 1px; right: 1px }
+
+        /* text information on the program */
+        #output {position: absolute; top: 40px; left: 1px;width: 800px; height: 800px }
+
+        /* used for svg output */
+        #message {position: absolute; top: 865px; left: 1px;width: 800px; height: 100px }
+
+    </style>
+
+</head>
+
+
+<script>
+
+
+        
+
+
+
+        // __________________________________________________________________________________________________________
+
+
+        function init() {
+
+            const pi = Math.PI;
+            const pi2 = 2 * pi;
+            const eps = 1e-10;//minimum value allowed into a denominator
+            let camera;
+            let camSize = 200;
+            let near = 0.1;
+            let far = 2000;
+            let w = 800;
+            let h = 800;//width, height of rendering area
+            let scene;
+
+
+            let a1 = 0.13, a2 = 5.4 , a3 = 2.45, a4 = 4.6;
+
+            // poles e.g. p1234 is intersection of l12 and l34 where 1,2,3,4 the pts on circle
+            let p1234, p1423, p1324;
+
+
+            let geom1;
+            let lMaterial, gL1, lL1;
+
+            // letiables used in the controls - slider - check boxes - camera
+            let c1, c2, c3, c4, cLogic, cShowTangents, cRedPolar, cGreenPolar, svgLogic; //controllers
+            let controlsCam;
+
+
+            let pxStart = camSize / 2, py = 0;
+
+            let control;
+
+            control = new function () {
+                this.theta1 = a1;
+                this.theta2 = a2;
+                this.theta3 = a3;
+                this.theta4 = a4;
+                this.control2By1 = false;
+                this.redPolar = false;
+                this.greenPolar = false;
+                this.showTangents = false;
+                this.svgMode = false;
+            };//end of control
+
+            function adjustc2() {
+                // if not control2By1ed return else adjust c2.
+                let p1x = cosL(control.theta1);
+                let p1y = sinL(control.theta1);
+                let polex = p1234.x;
+                let poley = p1234.y;
+                let line12 = new lineMC(p1x, p1y, polex, poley);
+                let intersections = new intersectionsMCLineUnitCircle(line12.m, line12.c);
+
+                let i1x = intersections.i1x;
+                let i1y = intersections.i1y;
+                let i2x = intersections.i2x;
+                let i2y = intersections.i2y;
+
+                let p2x, p2y, angle;
+
+                if (!cLogic.getValue()) {
+                    return;
+                }
+
+
+
+
+
+                if (Math.abs(p1x - i1x) < 0.0001) {
+                    p2x = i2x;
+                    p2y = i2y;
+                } else {
+                    p2x = i1x;
+                    p2y = i1y;
+                }
+                if (p2x == 0) {
+                    angle = -pi / 2
+                } else {
+                    angle = Math.atan2(p2y, p2x);
+
+                }
+                if (angle < 0) {
+                    angle = pi2 + angle
+
+                }
+                c2.setValue(angle);
+            }
+
+
+            function addControls(controlObject) {
+                let gui = new dat.GUI({name: 'My GUI'});
+                gui.domElement.id = 'gui';
+
+                c1 = gui.add(controlObject, 'theta1', 0, (0.25 * pi2), 0.01);
+                c2 = gui.add(controlObject, 'theta2', (0.65 * pi2), 0.98 * pi2);
+                c3 = gui.add(controlObject, 'theta3', 0.25 * pi2, 0.5 * pi2, 0.01);
+                c4 = gui.add(controlObject, 'theta4', 0.5 * pi2, 0.75 * pi2, 0.01);
+                c1.onChange(function (value) {
+
+                    adjustc2();
+                });
+
+
+                cLogic = gui.add(controlObject, 'control2By1');
+                cShowTangents = gui.add(controlObject, 'showTangents');
+                cRedPolar = gui.add(controlObject, 'redPolar');
+                cGreenPolar = gui.add(controlObject, 'greenPolar');
+                svgLogic = gui.add(controlObject, 'svgMode');
+            }//end addControls8
+
+
+
+
+
+            addControls(control);
+
+
+            scene = new THREE.Scene();
+
+
+
+            camera = new THREE.PerspectiveCamera(25, 1, 0.1, 1000);
+
+            controlsCam = new THREE.OrbitControls(camera);
+
+
+            renderer = new THREE.SVGRenderer();
+            renderer.setClearColor(0x000000);
+            renderer.setQuality('high');
+
+            renderer.setSize(w, h);
+
+
+
+            document.getElementById("output").appendChild(renderer.domElement);
+
+
+            controlsCam = new THREE.OrbitControls(camera, renderer.domElement);
+
+            camera.position.x = 0;
+            camera.position.y = 0;
+            camera.position.z = 20;
+            camera.lookAt(scene.position);
+            camera.rotation.z = -pi / 2;
+            controlsCam.update();  //careful
+
+
+            render();
+
+            function render() {
+
+                setUpScene();
+
+                controlsCam.update();
+
+                renderer.render(scene, camera);
+
+                let svgContainer = document.getElementById("message");
+                if (svgLogic.getValue()) {
+
+                    let XMLS = new XMLSerializer();
+                    let svgfile = XMLS.serializeToString(renderer.domElement);
+
+
+                    svgContainer.innerText = svgfile;
+
+                }
+                else {
+                    svgContainer.innerText = "To see how a pole gives rise to a constant polar turn on control2By1 then adjust theta1. " +
+                                    "This automatically adjusts theta2 to simulate drawing lines from the fixed blue pole.  " +
+                                    "Focus on the little blue square pole and the blue polar line. " +
+                                    "You can turn on tangents from the blue pole to verify they could also be used to define the polar. " +
+                                    "The other colours depict the other poles and polars but are not auto adjustable. " +
+                            "The range of angles on each slider is restricted to avoid confusion. " +
+                            "To look at the scene from different projections drag and zoom with the mouse." +
+                            " To export graphics svg code  you can click svgMode then use copy and paste."
+                }
+                ;
+
+
+                requestAnimationFrame(render);
+
+
+            }//end render
+            function setUpScene() {
+
+                // how to read the variable names.
+
+                // p1 would indicates a point
+                //l12 the line joining pts 1 and 2 - x means extended line.
+                //  p1234 the intersection of l12 and l34
+                // l12341423 the line joining pts p1234 and p1423
+                //ETC!
+
+                let l12, l34, l13, l24, l23, l14, l12x, l34x, l13x, l24x, l23x, l14x, cc;
+                let p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y;
+
+
+
+
+                while (scene.children.length > 0) {
+
+                    scene.children[0].geometry.dispose();
+                    scene.children[0].material.dispose();
+                    scene.remove(scene.children[0]);
+
+                }
+
+
+                c2.enabled = false;
+
+
+                p1x = cosL(control.theta1);
+                p1y = sinL(control.theta1);
+                p2x = cosL(control.theta2);
+                p2y = sinL(control.theta2);
+                p3x = cosL(control.theta3);
+                p3y = sinL(control.theta3);
+                p4x = cosL(control.theta4);
+                p4y = sinL(control.theta4);
+
+
+                l12x = drawLine(p1x, p1y, p2x, p2y, -camSize, camSize, 0x004444, scene);
+                l34x = drawLine(p3x, p3y, p4x, p4y, -camSize, camSize, 0x044440, scene);
+                l13x = drawLine(p1x, p1y, p3x, p3y, -camSize, camSize, 0x044440, scene);
+                l24x = drawLine(p2x, p2y, p4x, p4y, -camSize, camSize, 0x044440, scene);
+
+                l12 = drawLine(p1x, p1y, p2x, p2y, 0, 0, 0xCCCCCC, scene);
+                l34 = drawLine(p3x, p3y, p4x, p4y, 0, 0, 0xCCCCCC, scene);
+                l13 = drawLine(p1x, p1y, p3x, p3y, 0, 0, 0xCCCCCC, scene);
+                l24 = drawLine(p2x, p2y, p4x, p4y, 0, 0, 0xCCCCCC, scene);
+                l23 = drawLine(p2x, p2y, p3x, p3y, -camSize, camSize, 0x004440, scene);
+                l14 = drawLine(p1x, p1y, p4x, p4y, -camSize, camSize, 0x004440, scene);
+                cc = drawUnitCircle(0xffffff, scene);
+                scene.add(l12);
+                scene.add(l34);
+                scene.add(l13);
+                scene.add(l24);
+                scene.add(l12x);
+                scene.add(l34x);
+                scene.add(l13x);
+                scene.add(l24x);
+                scene.add(l23);
+                scene.add(l14);
+
+                p1234 = new intersectPoint(p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y);
+                p1423 = new intersectPoint(p1x, p1y, p4x, p4y, p2x, p2y, p3x, p3y);
+                p1324 = new intersectPoint(p1x, p1y, p3x, p3y, p2x, p2y, p4x, p4y);
+
+                let l13241423 = drawLine(p1324.x, p1324.y, p1423.x, p1423.y, -camSize, camSize, 0x0000ff, scene);
+                let l12341423 = drawLine(p1234.x, p1234.y, p1423.x, p1423.y, -camSize, camSize, 0xFF0000, scene);
+                let l12341324 = drawLine(p1234.x, p1234.y, p1324.x, p1324.y, -camSize, camSize, 0x00FF00, scene);
+
+                //find m and c of l13241423
+                let mcl13241423 = (new lineMC(p1324.x, p1324.y, p1423.x, p1423.y));
+                let ml13241423 = mcl13241423.m;
+                let cl13241423 = mcl13241423.c;
+
+                // find intersects with unit circle
+                let il13241423UC1x = new intersectionsMCLineUnitCircle(ml13241423, cl13241423).i1x;
+                let il13241423UC1y = new intersectionsMCLineUnitCircle(ml13241423, cl13241423).i1y;
+                let il13241423UC2x = new intersectionsMCLineUnitCircle(ml13241423, cl13241423).i2x;
+                let il13241423UC2y = new intersectionsMCLineUnitCircle(ml13241423, cl13241423).i2y;
+
+                if (cShowTangents.getValue()) {
+
+                    let tangentil13241423UC1 = drawLine(il13241423UC1x, il13241423UC1y, p1234.x, p1234.y, 0, 0, 0x0000CC, scene);
+                    let tangentil13241423UC2 = drawLine(il13241423UC2x, il13241423UC2y, p1234.x, p1234.y, 0, 0, 0x0000CC, scene);
+                    scene.add(tangentil13241423UC1);
+                    scene.add(tangentil13241423UC2);
+                }
+
+                scene.add(l13241423);
+
+
+                if (cRedPolar.getValue()) {
+                    scene.add(l12341423);
+                }
+
+                if (cGreenPolar.getValue()) {
+                    scene.add(l12341324);
+
+                }
+
+                // set up the three poles.---------------------------
+
+
+                let gP1 = new THREE.Geometry();
+                gP1.vertices.push(new THREE.Vector3(p1234.x, p1234.y, 0));
+                let p1Material = new THREE.PointsMaterial({
+                    color: 0x0000FF, size: 0.1, transparent: true,
+                    opacity: 0.7
+                });
+                let pP1 = new THREE.Points(gP1, p1Material);
+                scene.add(pP1);
+
+
+                let gP2 = new THREE.Geometry();
+                gP2.vertices.push(new THREE.Vector3(p1423.x, p1423.y, 0));
+                let p2Material = new THREE.PointsMaterial({
+                    color: 0x00FF00, size: 0.05, transparent: true,
+                    opacity: 0.7
+                });
+                let pP2 = new THREE.Points(gP2, p2Material);
+                scene.add(pP2);
+
+
+                let gP3 = new THREE.Geometry();
+                gP3.vertices.push(new THREE.Vector3(p1324.x, p1324.y, 0));
+                let p3Material = new THREE.PointsMaterial({
+                    color: 0xFF0000, size: 0.05, transparent: true,
+                    opacity: 0.7
+                });
+
+                let pP3 = new THREE.Points(gP3, p3Material);
+                scene.add(pP3);
+
+
+                // end setup poles. -----------------------------------
+
+                //set up circle
+                scene.add(cc);
+
+
+            }//end setUpScene
+
+            function drawUnitCircle(colour, scene) {
+
+                let gC = new THREE.RingGeometry(1, 1.02, 512);
+                let cMat = new THREE.MeshBasicMaterial({color: colour, side: THREE.DoubleSide});
+                circle = new THREE.Mesh(gC, cMat);
+                circle.position.x = 0;
+                circle.position.y = 0;
+                return (circle);
+            }
+
+            function intersectPoint(x1, y1, x2, y2, x3, y3, x4, y4) {
+                // intersection two lines - first lined defined by first pair of points, second line by second pair
+                let lineMC12 = new lineMC(x1, y1, x2, y2);
+                let lineMC34 = new lineMC(x3, y3, x4, y4);
+                let mDiff = lineMC34.m - lineMC12.m;
+                let cDiff = lineMC34.c - lineMC12.c;
+
+                if (Math.abs(mDiff) < eps) {
+                    mDiff = eps
+                }
+                this.x = -cDiff / mDiff;
+                this.y = ((lineMC34.m) * this.x ) + lineMC34.c;
+            }
+
+            function lineMC(x1, y1, x2, y2) {
+                let eps = 1e-10;
+                let run = (x2 - x1);
+                if (Math.abs(run) < eps) {
+                    run = eps
+                }
+                this.m = (y2 - y1) / run;
+                this.c = -((this.m) * x1) + y1;
+            }
+
+
+            function drawLine(x1, y1, x2, y2, xLeft, xRight, colour, scene) {
+
+
+                let yLeft = getY(x1, y1, x2, y2, xLeft);
+                let yRight = getY(x1, y1, x2, y2, xRight);
+
+
+                let gL = new THREE.Geometry();
+                let lMat = new THREE.LineBasicMaterial({color: colour});
+
+                if (xLeft == xRight) {
+                    gL.vertices.push(new THREE.Vector3(x1, y1, 0));
+                    gL.vertices.push(new THREE.Vector3(x2, y2, 0));
+                }
+
+                else {
+
+                    gL.vertices.push(new THREE.Vector3(xRight, yRight, 0));
+                    gL.vertices.push(new THREE.Vector3(xLeft, yLeft, 0));
+                }
+
+
+                let l = new THREE.Line(gL, lMat);
+
+
+                return (l);
+
+            }
+
+            function cosL(x) {
+
+                if (Math.abs(Math.cos(x)) < eps) {
+                    return (eps)
+                }
+                return (Math.cos(x))
+            }
+
+            function sinL(x) {
+
+                if (Math.abs(Math.sin(x)) < eps) {
+                    return (eps)
+                }
+                return (Math.sin(x))
+
+            }
+
+            function getY(x1, y1, x2, y2, x) {
+                //from two given points on line - calc the y for a general x
+                let eps = 1e-10;
+                let run = (x2 - x1);
+                if (Math.abs(run) < eps) run = eps;
+
+                // gradient
+                let m = (y2 - y1) / run;
+                //line
+                let y = m * (x - x1) + y1;
+
+                return (y)
+            }
+
+            function intersectionsMCLineUnitCircle(m, c) {
+
+
+                let tempm = m * m;
+                let tempc = c * c;
+                let diff = tempm - tempc;
+
+                let temp = Math.sqrt(1 + diff);
+
+                this.i1x = ( (-m * c) + temp) / (1.0 + tempm);
+                this.i1y = ( m * (this.i1x) ) + c;
+
+                this.i2x = ( (-m * c) - temp) / (1.0 + tempm);
+                this.i2y = ( m * (this.i2x) ) + c;
+
+            }
+
+
+
+
+        }//end init
+        //_____________________________________________________________________________________________________________
+
+
+
+
+        //_______________________________________________________________________________________________________________
+
+
+
+
+// calls the init function when the window is done loading.
+       // window.onload = init;
+
+
+
+
+</script>
+
+<body onload = "init()">
+
+
+</html>
+
+<div>  <b> An Interactive Demonstration of Pole and Polar. V1.0 (wrcstewart @yahoo.co.uk 2018-2019)</b> </div>
+<div>                                 </div>
+<div>The theory is explained at: <a href= "https://youtu.be/AjVM5Q-pvjw" > You Tube: njWildberger: Hyperbolic Geometry 1</a>  </div>
+
+
+
+<div id="output"> </div>
+
+
+<textarea id ="message" rows="3" cols="150"></textarea>
+
+
+</body>
+
+</html>
